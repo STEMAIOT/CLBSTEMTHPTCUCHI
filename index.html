@@ -39,7 +39,6 @@
       font-family: 'Times New Roman', monospace;
     }
 
-    /* Nền trong suốt cho phép hiệu ứng khúc xạ Liquid Glass xuyên suốt */
     .tech-grid-bg {
       background: transparent;
     }
@@ -207,7 +206,6 @@
 </head>
 <body class="min-h-screen flex flex-col selection:bg-green-200 selection:text-green-950">
 
-  <!-- Thanh trên cùng: Ẩn trên điện thoại (vì đã gộp xuống thanh dưới), giữ nguyên trên máy tính -->
   <div class="hidden sm:block bg-slate-900/75 backdrop-blur-xl text-slate-100 text-xs border-b border-white/20">
     <div class="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-4 font-mono-tech text-slate-300">
@@ -228,7 +226,6 @@
           class="w-11 h-11 sm:w-10 sm:h-10 rounded-full object-cover bg-white border border-white/80 shadow-sm shrink-0"
         />
         <div class="min-w-0">
-          <!-- Phần "Phòng CLB" được gộp chung vào thanh này trên giao diện điện thoại -->
           <div class="flex items-center gap-1.5 text-[10px] font-mono-tech text-teal-800 font-semibold leading-none mb-0.5 sm:hidden">
             <span class="px-1.5 py-0.5 rounded-full bg-slate-900/80 text-slate-100">Phòng CLB</span>
             <span class="text-slate-500">• Chưa chính thức</span>
@@ -1033,10 +1030,8 @@
       });
     });
 
-// ================= CẤU HÌNH 2 EMAIL QUẢN LÝ CLB =================
     const EMAIL_QUAN_LY_1 = "nguyenlong17022009@gmail.com";
     const EMAIL_QUAN_LY_2 = "mn20122009@gmail.com";
-    // ================================================================
 
     clubRegistrationForm?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1111,7 +1106,6 @@
         }
       }
 
-      // Lưu trữ đơn và hiển thị thông báo thành công trên trang
       registrations.unshift({
         code,
         fullName,
@@ -1153,9 +1147,7 @@
 
     renderAchievements();
   </script>
-    <!-- ================= BỘ HIỆU ỨNG ANIMATION PHONG CÁCH iOS 27 LIQUID GLASS ================= -->
   <style>
-    /* 1. Hiệu ứng đàn hồi vật lý (Apple Spring Physics) cho toàn bộ thẻ và nút */
     .liquid-nav-bar,
     .flat-card,
     .flat-card-strong,
@@ -1171,7 +1163,6 @@
       will-change: transform, box-shadow;
     }
 
-    /* Hiệu ứng nhấn lún (Squishy Touch) đặc trưng của iOS khi chạm tay vào nút/thẻ */
     .btn-primary-green:active,
     .btn-secondary-navy:active,
     .btn-outline-flat:active,
@@ -1180,7 +1171,6 @@
       transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1) !important;
     }
 
-    /* Nổi khối đàn hồi khi đưa chuột hoặc chạm vào Card */
     .flat-card:hover {
       transform: translateY(-6px) scale(1.015);
     }
@@ -1188,7 +1178,6 @@
       transform: translateY(-4px) scale(1.008);
     }
 
-    /* 2. Ánh sáng phản chiếu mặt kính lỏng (Dynamic Specular Highlight) */
     .flat-card,
     .flat-card-strong {
       position: relative;
@@ -1217,7 +1206,6 @@
       opacity: 1;
     }
 
-    /* 3. Hiệu ứng xuất hiện mượt mà khi cuộn trang (Fluid Blur-In Reveal) */
     .ios-reveal-item {
       opacity: 0;
       transform: translateY(28px) scale(0.96);
@@ -1233,7 +1221,6 @@
       filter: blur(0px);
     }
 
-    /* 4. Thanh Header thu phóng kiểu Dynamic Island khi cuộn */
     header.ios-header-scrolled .liquid-nav-bar {
       transform: scale(0.975) translateY(-2px);
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.58) 100%);
@@ -1243,7 +1230,6 @@
         inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 1);
     }
 
-    /* 5. Menu Mobile bung ra với hiệu ứng giọt nước (Liquid Popover) */
     #mobileMenuPanel {
       transform-origin: top right;
       transition: 
@@ -1275,11 +1261,9 @@
 
   <script>
     (function () {
-      // 1. Kích hoạt hiệu ứng trượt mờ (Fluid Scroll Reveal) cho các khối thẻ
       const cardsAndSections = document.querySelectorAll('.flat-card, .flat-card-strong, section h1, section h2');
       cardsAndSections.forEach((el, index) => {
         el.classList.add('ios-reveal-item');
-        // Tạo độ trễ dây chuyền nhẹ giữa các thẻ nằm cạnh nhau
         el.style.transitionDelay = ((index % 4) * 65) + 'ms';
       });
 
@@ -1293,7 +1277,6 @@
 
       cardsAndSections.forEach((el) => revealObserver.observe(el));
 
-      // 2. Hiệu ứng ánh sáng mặt kính chạy theo ngón tay / con trỏ chuột
       const glassCards = document.querySelectorAll('.flat-card, .flat-card-strong');
       glassCards.forEach((card) => {
         card.addEventListener('mousemove', (e) => {
@@ -1304,7 +1287,6 @@
           card.style.setProperty('--ios-y', `${y}px`);
         });
 
-        // Hỗ trợ cảm ứng trên điện thoại
         card.addEventListener('touchstart', (e) => {
           const touch = e.touches[0];
           const rect = card.getBoundingClientRect();
@@ -1318,7 +1300,6 @@
         }, { passive: true });
       });
 
-      // 3. Hiệu ứng Dynamic Island thu nhỏ nhẹ thanh điều hướng khi cuộn xuống
       const mainHeader = document.querySelector('header');
       if (mainHeader) {
         window.addEventListener('scroll', () => {
@@ -1331,10 +1312,6 @@
       }
     })();
   </script>
-  <!-- ======================================================================================== -->
-  
-
-  <!-- Bổ sung responsive cho điện thoại; giữ nguyên nội dung, màu sắc và animation hiện có -->
   <style id="mobile-responsive-optimization">
     @media (max-width: 640px) {
       html {
@@ -1422,7 +1399,6 @@
         overflow-wrap: break-word;
       }
 
-      /* Giữ nguyên lưới 2 cột của các ô thống kê, nhưng tránh chữ bị tràn. */
       #gioi-thieu .grid.grid-cols-2 > .flat-card {
         min-width: 0;
         padding: 0.7rem;
@@ -1486,7 +1462,6 @@
         object-fit: contain;
       }
 
-      /* Các sơ đồ/SVG hoặc khối nội dung rộng có thể cuộn riêng thay vì làm tràn cả trang. */
       .overflow-x-auto,
       pre,
       .table-responsive {
@@ -1530,7 +1505,6 @@
 
   
 
-    /* iOS-inspired Liquid Glass: bổ sung hiệu ứng, không thay đổi nội dung hay JS */
     :root {
       --ios-glass-blur: 26px;
       --ios-glass-saturation: 185%;
@@ -1650,7 +1624,6 @@
       to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
     }
 
-    /* Chỉ bật hiệu ứng hover khi thiết bị thực sự có con trỏ; tránh giả lập hover trên cảm ứng. */
     @media (hover: hover) and (pointer: fine) {
       .flat-card:hover,
       .flat-card-strong:hover {
@@ -1663,7 +1636,6 @@
       }
     }
 
-    /* Điện thoại: giảm blur và đổ bóng để hạn chế tải GPU, vẫn giữ cảm giác kính. */
     @media (max-width: 767px) {
       :root {
         --ios-glass-blur: 19px;
@@ -1694,7 +1666,6 @@
       }
     }
 
-    /* Tôn trọng cài đặt giảm chuyển động của hệ điều hành. */
     @media (prefers-reduced-motion: reduce) {
       .liquid-nav-bar,
       #mobileMenuPanel:not(.hidden) {
@@ -1711,7 +1682,6 @@
     }
 
   
-    /* Mobile bottom navigation: app-style dock, desktop navigation remains unchanged */
     @media (max-width: 767px) {
       body {
         padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
