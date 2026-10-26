@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="vi" class="scroll-smooth">
 <head>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CLB STEM - AIOT | Trường THPT Củ Chi</title>
@@ -1816,6 +1819,464 @@
       updateActive();
     })();
   </script>
+
+<!-- ===== LIVE CHAT WIDGET - CLB STEM AIOT ===== -->
+<div id="stemChatWidget" class="fixed bottom-24 right-4 z-[70] sm:bottom-6 sm:right-6 font-sans">
+  <!-- Nút mở chat -->
+  <button id="stemChatToggle" type="button"
+    class="w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 text-white shadow-lg shadow-teal-600/30 flex items-center justify-center transition-all active:scale-95 relative"
+    aria-label="Mở chat hỗ trợ">
+    <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+    </svg>
+    <span id="stemChatBadge" class="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] font-bold rounded-full hidden items-center justify-center">0</span>
+  </button>
+
+  <!-- Panel chat -->
+  <div id="stemChatPanel" class="hidden absolute bottom-16 right-0 w-[340px] max-w-[calc(100vw-2rem)] h-[480px] max-h-[70vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-white/80"
+    style="background: linear-gradient(160deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.78) 100%); backdrop-filter: blur(24px);">
+    
+    <!-- Header -->
+    <div class="px-4 py-3 bg-teal-700 text-white flex items-center justify-between shrink-0">
+      <div>
+        <div class="font-bold text-sm">Hỗ trợ CLB STEM AIOT</div>
+        <div id="stemChatStatus" class="text-[11px] opacity-90 flex items-center gap-1.5 mt-0.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse"></span>
+          <span>Đang chờ kết nối quản trị viên...</span>
+        </div>
+      </div>
+      <button id="stemChatClose" type="button" class="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center text-lg leading-none">×</button>
+    </div>
+
+    <!-- Messages -->
+    <div id="stemChatMessages" class="flex-1 overflow-y-auto p-3 space-y-2.5 text-sm bg-slate-50/60"></div>
+
+    <!-- Input -->
+    <div class="p-3 border-t border-slate-200/80 bg-white/70 shrink-0">
+      <form id="stemChatForm" class="flex gap-2">
+        <input id="stemChatInput" type="text" placeholder="Nhập tin nhắn..." maxlength="500"
+          class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500"
+          autocomplete="off" />
+        <button type="submit" class="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-sm shrink-0 active:scale-95 transition">
+          Gửi
+        </button>
+      </form>
+      <p class="text-[10px] text-slate-500 mt-1.5 text-center">Tin nhắn sẽ được gửi đến Ban Quản Trị CLB</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ==================== CẤU HÌNH ====================
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyD_fSYg0AVZiN5T6ecUccVDSPjdfut_cpY",
+    authDomain: "device-streaming-0aa5e078.firebaseapp.com",
+    projectId: "device-streaming-0aa5e078",
+    storageBucket: "device-streaming-0aa5e078.firebasestorage.app",
+    messagingSenderId: "852700660477",
+    appId: "1:852700660477:web:38893fb24d51e188593494",
+    databaseURL: "https://device-streaming-0aa5e078-default-rtdb.asia-southeast1.firebasedatabase.app"
+  };
+
+  const TELEGRAM_BOT_TOKEN = "8870639638:AAGljpJA7cFIfPh1Bq-HnCMRDEuPQpmm1k8";
+  const ADMIN_CHAT_ID = "7965524668";
+  const GEMINI_API_KEY = "AIzaSyD4wREk4CyhQaYjPdb1NwBbYTNaNcd7ZcQ";          // ← Thay key Gemini
+
+  const MAX_AI_MESSAGES = 6;
+  // ==================================================
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.database();
+
+  const toggleBtn = document.getElementById("stemChatToggle");
+  const panel = document.getElementById("stemChatPanel");
+  const closeBtn = document.getElementById("stemChatClose");
+  const messagesEl = document.getElementById("stemChatMessages");
+  const form = document.getElementById("stemChatForm");
+  const input = document.getElementById("stemChatInput");
+  const statusEl = document.getElementById("stemChatStatus");
+  const badge = document.getElementById("stemChatBadge");
+
+  let sessionId = localStorage.getItem("stem_chat_session") || null;
+  let isOpen = false;
+  let unread = 0;
+  let notificationPermission = Notification.permission;
+
+  // Trạng thái AI
+  let aiMode = true;
+  let aiMessageCount = 0;
+  let conversationHistory = [];
+
+  // ==================== KIẾN THỨC CLB ====================
+  const SYSTEM_PROMPT = `Bạn là trợ lý AI chính thức của Câu lạc bộ STEM AIOT - Trường THPT Củ Chi.
+
+THÔNG TIN CHÍNH XÁC VỀ CLB:
+- Tên đầy đủ: Câu lạc bộ STEM AIOT Trường THPT Củ Chi
+- Thành lập năm: 2025
+- Giáo viên hướng dẫn: Cô Thảo Uyên
+- Chủ nhiệm CLB: Huỳnh Quốc Anh (Số điện thoại: 0398776336)
+- Số thành viên hiện tại: khoảng 28 thành viên (học sinh khối 10, 11 và 12)
+- Hoạt động chính: Lập trình, điện tử, IoT, làm mô hình thực tế, tham gia các cuộc thi STEM
+- Yêu cầu tham gia: Chỉ cần yêu thích và muốn tìm hiểu về công nghệ, không cần kinh nghiệm sẵn
+- Cách đăng ký: Điền form đăng ký trên website hoặc liên hệ trực tiếp Chủ nhiệm
+- Địa chỉ trường: Tỉnh lộ 8, Khu phố 1, Thị trấn Củ Chi (Xã Tân An Hội), TP. Hồ Chí Minh
+
+QUY TẮC TRẢ LỜI:
+1. Trả lời bằng tiếng Việt, ngắn gọn, thân thiện, rõ ràng.
+2. Chỉ trả lời dựa trên thông tin ở trên. Không bịa thêm.
+3. Nếu câu hỏi nằm ngoài thông tin trên, hoặc học sinh muốn nói chuyện với người thật → chỉ trả lời đúng 1 từ: HANDOFF_TO_ADMIN
+4. Không bao giờ nói "mình chưa hiểu" nếu đã có thông tin.`;
+
+  // ==================== HÀM HỖ TRỢ ====================
+  function createSession() {
+    sessionId = "cc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem("stem_chat_session", sessionId);
+    db.ref(`livechats/${sessionId}/meta`).set({
+      status: "ai",
+      createdAt: Date.now(),
+      userAgent: navigator.userAgent.slice(0, 120)
+    });
+  }
+
+  function setStatus(text, color = "amber") {
+    const colors = { amber: "bg-amber-300", green: "bg-emerald-400", blue: "bg-sky-400", purple: "bg-violet-400" };
+    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${colors[color] || colors.amber} ${color === 'amber' ? 'animate-pulse' : ''}"></span><span>${text}</span>`;
+  }
+
+  function escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  function showTyping() {
+    const el = document.createElement("div");
+    el.id = "temp-ai-typing";
+    el.className = "flex justify-start";
+    el.innerHTML = `<div class="bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2 text-sm text-slate-500">AI đang soạn tin...</div>`;
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function removeTyping() {
+    const el = document.getElementById("temp-ai-typing");
+    if (el) el.remove();
+  }
+
+  // ==================== RENDER TIN NHẮN ====================
+  function renderMessage(msg, isTemp = false) {
+    const isAdmin = msg.from === "admin" || msg.from === "ai";
+    const time = new Date(msg.ts || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    const bubble = document.createElement("div");
+    bubble.className = `flex ${isAdmin ? "justify-start" : "justify-end"}`;
+    if (isTemp) bubble.id = "temp-ai-typing";
+
+    let nameLabel = "";
+    if (msg.from === "ai") nameLabel = `<div class="text-[10px] font-semibold text-violet-700 mb-0.5">AI Trợ lý CLB</div>`;
+    if (msg.from === "admin") nameLabel = `<div class="text-[10px] font-semibold text-teal-700 mb-0.5">${msg.name || "Ban Quản Trị"}</div>`;
+
+    // Nút Liên hệ Admin chỉ hiện ở tin của AI khi vẫn đang ở chế độ AI
+    let actionBtn = "";
+    if (msg.from === "ai" && aiMode) {
+      actionBtn = `
+        <div class="mt-1.5">
+          <button type="button" class="btn-transfer-admin text-[11px] text-violet-600 hover:text-violet-800 flex items-center gap-1 font-medium transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+            Liên hệ Admin
+          </button>
+        </div>`;
+    }
+
+    bubble.innerHTML = `
+      <div class="max-w-[80%] rounded-2xl px-3.5 py-2 ${isAdmin ? (msg.from === "ai" ? "bg-violet-50 border border-violet-200 text-slate-800" : "bg-white border border-slate-200 text-slate-800") : "bg-teal-600 text-white"}">
+        ${nameLabel}
+        <div class="leading-snug whitespace-pre-wrap break-words">${escapeHtml(msg.text)}</div>
+        <div class="text-[10px] opacity-60 mt-1 text-right">${time}</div>
+        ${actionBtn}
+      </div>`;
+    messagesEl.appendChild(bubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Gắn sự kiện nút
+    if (msg.from === "ai" && aiMode) {
+      const btn = bubble.querySelector(".btn-transfer-admin");
+      if (btn) {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+      // Gọi trực tiếp hàm xử lý, không dùng form submit
+          handleUserMessage("Tôi muốn liên hệ với Quản trị viên");
+        });
+      }
+    }
+  }
+
+  // ==================== GỌI GEMINI ====================
+  async function askGemini(userText) {
+    conversationHistory.push({ role: "user", text: userText });
+
+    const recentHistory = conversationHistory.slice(-6);
+
+    const contents = recentHistory.map(m => ({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.text }]
+    }));
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: SYSTEM_PROMPT }]
+            },
+            contents: contents,
+            generationConfig: {
+              temperature: 0.6,
+              maxOutputTokens: 300,
+              topP: 0.8
+            }
+          })
+        }
+      );
+
+      const data = await res.json();
+
+      if (data.error) {
+        console.error("Gemini API Error:", data.error);
+        return { handoff: true, text: null };
+      }
+
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+
+      if (!reply || reply.includes("HANDOFF_TO_ADMIN") || 
+          reply.toLowerCase().includes("chuyển cho") || 
+          reply.toLowerCase().includes("quản trị viên")) {
+        return { handoff: true, text: null };
+      }
+
+      conversationHistory.push({ role: "model", text: reply });
+      return { handoff: false, text: reply };
+
+    } catch (err) {
+      console.error("Lỗi gọi Gemini:", err);
+      return { handoff: true, text: null };
+    }
+  }
+
+  // ==================== CHUYỂN SANG ADMIN ====================
+  async function transferToAdmin(reason = "Học sinh yêu cầu hoặc hết lượt AI") {
+    if (!aiMode) return; // đã chuyển rồi thì thôi
+
+    aiMode = false;
+    setStatus("Đang liên hệ với Quản trị viên...", "blue");
+
+    if (sessionId) {
+      db.ref(`livechats/${sessionId}/meta`).update({
+        status: "waiting_admin",
+        transferredAt: Date.now(),
+        reason
+      });
+    }
+
+    // Gửi lịch sử lên Telegram
+    let historyText = conversationHistory.map(m => 
+      (m.role === "user" ? "Học sinh" : "AI") + ": " + m.text
+    ).join("\n");
+
+    const telegramText = 
+`[CLB STEM AIOT] Yêu cầu hỗ trợ từ học sinh
+
+Session: ${sessionId}
+Lý do: ${reason}
+
+=== Lịch sử trò chuyện với AI ===
+${historyText || "(Chưa có tin nhắn)"}
+
+(Trả lời tin nhắn này để tiếp tục hỗ trợ học sinh)`;
+
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: ADMIN_CHAT_ID,
+          text: telegramText,
+          disable_web_page_preview: true
+        })
+      });
+    } catch (e) {
+      console.warn("Gửi Telegram lỗi:", e);
+    }
+
+    // Hiện tin hệ thống
+    renderMessage({
+      from: "admin",
+      name: "Hệ thống",
+      text: "Đã chuyển bạn đến Ban Quản Trị CLB. Vui lòng chờ trong giây lát, Admin sẽ trả lời sớm nhất có thể.",
+      ts: Date.now()
+    });
+
+    // Bắt đầu lắng nghe tin Admin
+    listenAdminMessages();
+  }
+
+  // ==================== XỬ LÝ TIN NHẮN HỌC SINH ====================
+  async function handleUserMessage(text) {
+    if (!text.trim()) return;
+
+    const lower = text.toLowerCase().trim();
+
+    // Hiện tin học sinh
+    renderMessage({ from: "student", text, ts: Date.now() });
+
+    // Lưu Firebase
+    if (sessionId) {
+      db.ref(`livechats/${sessionId}/messages`).push({
+        from: "student",
+        text,
+        ts: Date.now()
+      });
+    }
+
+    // ===== NẾU ĐÃ CHUYỂN ADMIN RỒI =====
+    if (!aiMode) {
+      const telegramText = `[CLB STEM AIOT] Tin nhắn mới\n\nSession: ${sessionId}\nNội dung: ${text}\n\n(Trả lời tin này để trả lời học sinh)`;
+      fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: ADMIN_CHAT_ID, text: telegramText })
+      });
+      return;
+    }
+
+    // ===== KIỂM TRA CÂU LỆNH CHUYỂN ADMIN =====
+    const transferKeywords = [
+      "liên kết tới admin", "lien ket toi admin",
+      "gặp admin", "gap admin",
+      "liên hệ admin", "lien he admin",
+      "nói chuyện với admin", "noi chuyen voi admin",
+      "chuyển admin", "chuyen admin",
+      "tôi muốn liên hệ với quản trị viên",
+      "gặp quản trị viên", "gap quan tri vien",
+      "liên hệ với quản trị viên"
+    ];
+
+    if (transferKeywords.some(k => lower.includes(k))) {
+      await transferToAdmin("Học sinh chủ động yêu cầu liên hệ Admin");
+      return;
+    }
+
+    // ===== CHẾ ĐỘ AI =====
+    aiMessageCount++;
+    showTyping();
+
+    if (aiMessageCount > MAX_AI_MESSAGES) {
+      removeTyping();
+      await transferToAdmin("Đã hết 10 lượt hỏi AI");
+      return;
+    }
+
+    const result = await askGemini(text);
+    removeTyping();
+
+    if (result.handoff) {
+      await transferToAdmin("AI không đủ thông tin / Học sinh muốn nói chuyện với người");
+      return;
+    }
+
+    // Hiện trả lời AI
+    renderMessage({
+      from: "ai",
+      text: result.text,
+      ts: Date.now()
+    });
+
+    // Lưu Firebase
+    if (sessionId) {
+      db.ref(`livechats/${sessionId}/messages`).push({
+        from: "ai",
+        text: result.text,
+        ts: Date.now()
+      });
+    }
+  }
+
+  // ==================== LẮNG NGHE TIN ADMIN ====================
+  function listenAdminMessages() {
+    if (!sessionId) return;
+    const ref = db.ref(`livechats/${sessionId}/messages`);
+    ref.off();
+    ref.on("child_added", (snap) => {
+      const msg = snap.val();
+      if (!msg || msg.from !== "admin") return;
+
+      renderMessage(msg);
+      setStatus("Đã kết nối với Quản trị viên", "green");
+
+      if (!isOpen) {
+        unread++;
+        badge.textContent = unread > 9 ? "9+" : unread;
+        badge.classList.remove("hidden");
+        badge.classList.add("flex");
+      }
+      if (document.hidden) {
+        try {
+          new Notification("CLB STEM AIOT – Tin nhắn mới", {
+            body: msg.text.slice(0, 120),
+            icon: "logo-stem-aiot.png"
+          });
+        } catch(e){}
+      }
+    });
+  }
+
+  // ==================== MỞ / ĐÓNG CHAT ====================
+  function openChat() {
+    if (!sessionId) createSession();
+    panel.classList.remove("hidden");
+    isOpen = true;
+    unread = 0;
+    badge.classList.add("hidden");
+    badge.classList.remove("flex");
+    input.focus();
+
+    if (aiMode) {
+      setStatus("AI Trợ lý đang hỗ trợ bạn", "purple");
+    } else {
+      setStatus("Đang liên hệ với Quản trị viên...", "blue");
+      listenAdminMessages();
+    }
+
+    if (Notification.permission === "default") {
+      Notification.requestPermission().then(p => notificationPermission = p);
+    }
+  }
+
+  function closeChat() {
+    panel.classList.add("hidden");
+    isOpen = false;
+  }
+
+  // ==================== SỰ KIỆN ====================
+  toggleBtn.addEventListener("click", () => isOpen ? closeChat() : openChat());
+  closeBtn.addEventListener("click", closeChat);
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    handleUserMessage(text);
+  });
+
+})();
+</script>
 
 </body>
 </html>
