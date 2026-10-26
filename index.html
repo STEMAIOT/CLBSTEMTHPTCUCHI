@@ -1879,11 +1879,10 @@
     databaseURL: "https://device-streaming-0aa5e078-default-rtdb.asia-southeast1.firebasedatabase.app"
   };
 
-  const TELEGRAM_BOT_TOKEN = "8870639638:AAGljpJA7cFIfPh1Bq-HnCMRDEuPQpmm1k8";
-  const ADMIN_CHAT_ID = "7965524668";
-  const GEMINI_API_KEY = "AIzaSyD4wREk4CyhQaYjPdb1NwBbYTNaNcd7ZcQ";          // ← Thay key Gemini
+  // URL Worker của bạn
+  const WORKER_URL = "https://stem-aiot.mn20122009.workers.dev";
 
-  const MAX_AI_MESSAGES = 6;
+  const MAX_AI_MESSAGES = 10;
   // ==================================================
 
   firebase.initializeApp(FIREBASE_CONFIG);
@@ -1903,12 +1902,10 @@
   let unread = 0;
   let notificationPermission = Notification.permission;
 
-  // Trạng thái AI
   let aiMode = true;
   let aiMessageCount = 0;
   let conversationHistory = [];
 
-  // ==================== KIẾN THỨC CLB ====================
   const SYSTEM_PROMPT = `Bạn là trợ lý AI chính thức của Câu lạc bộ STEM AIOT - Trường THPT Củ Chi.
 
 THÔNG TIN CHÍNH XÁC VỀ CLB:
@@ -1928,7 +1925,6 @@ QUY TẮC TRẢ LỜI:
 3. Nếu câu hỏi nằm ngoài thông tin trên, hoặc học sinh muốn nói chuyện với người thật → chỉ trả lời đúng 1 từ: HANDOFF_TO_ADMIN
 4. Không bao giờ nói "mình chưa hiểu" nếu đã có thông tin.`;
 
-  // ==================== HÀM HỖ TRỢ ====================
   function createSession() {
     sessionId = "cc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
     localStorage.setItem("stem_chat_session", sessionId);
@@ -1964,24 +1960,21 @@ QUY TẮC TRẢ LỜI:
     if (el) el.remove();
   }
 
-  // ==================== RENDER TIN NHẮN ====================
-  function renderMessage(msg, isTemp = false) {
+  function renderMessage(msg) {
     const isAdmin = msg.from === "admin" || msg.from === "ai";
     const time = new Date(msg.ts || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
     const bubble = document.createElement("div");
     bubble.className = `flex ${isAdmin ? "justify-start" : "justify-end"}`;
-    if (isTemp) bubble.id = "temp-ai-typing";
 
     let nameLabel = "";
     if (msg.from === "ai") nameLabel = `<div class="text-[10px] font-semibold text-violet-700 mb-0.5">AI Trợ lý CLB</div>`;
     if (msg.from === "admin") nameLabel = `<div class="text-[10px] font-semibold text-teal-700 mb-0.5">${msg.name || "Ban Quản Trị"}</div>`;
 
-    // Nút Liên hệ Admin chỉ hiện ở tin của AI khi vẫn đang ở chế độ AI
     let actionBtn = "";
     if (msg.from === "ai" && aiMode) {
       actionBtn = `
         <div class="mt-1.5">
-          <button type="button" class="btn-transfer-admin text-[11px] text-violet-600 hover:text-violet-800 flex items-center gap-1 font-medium transition">
+          <button type="button" class="btn-transfer-admin text-[11px] text-violet-600 hover:text-violet-800 flex items-center gap-1 font-medium">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
@@ -2000,78 +1993,76 @@ QUY TẮC TRẢ LỜI:
     messagesEl.appendChild(bubble);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // Gắn sự kiện nút
     if (msg.from === "ai" && aiMode) {
       const btn = bubble.querySelector(".btn-transfer-admin");
       if (btn) {
         btn.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-      // Gọi trực tiếp hàm xử lý, không dùng form submit
           handleUserMessage("Tôi muốn liên hệ với Quản trị viên");
         });
       }
     }
   }
 
-  // ==================== GỌI GEMINI ====================
+  // Gọi Worker thay vì gọi Gemini trực tiếp
   async function askGemini(userText) {
     conversationHistory.push({ role: "user", text: userText });
 
     const recentHistory = conversationHistory.slice(-6);
 
-    const contents = recentHistory.map(m => ({
-      role: m.role === "user" ? "user" : "model",
-      parts: [{ text: m.text }]
-    }));
-
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: SYSTEM_PROMPT }]
-            },
-            contents: contents,
-            generationConfig: {
-              temperature: 0.6,
-              maxOutputTokens: 300,
-              topP: 0.8
-            }
-          })
-        }
-      );
+      const res = await fetch(`${WORKER_URL}/api`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "askGemini",
+          history: recentHistory,
+          systemPrompt: SYSTEM_PROMPT
+        })
+      });
 
       const data = await res.json();
 
       if (data.error) {
-        console.error("Gemini API Error:", data.error);
+        console.error("Gemini error:", data.error);
         return { handoff: true, text: null };
       }
 
       const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
-      if (!reply || reply.includes("HANDOFF_TO_ADMIN") || 
-          reply.toLowerCase().includes("chuyển cho") || 
+      if (!reply || reply.includes("HANDOFF_TO_ADMIN") ||
+          reply.toLowerCase().includes("chuyển cho") ||
           reply.toLowerCase().includes("quản trị viên")) {
         return { handoff: true, text: null };
       }
 
       conversationHistory.push({ role: "model", text: reply });
       return { handoff: false, text: reply };
-
     } catch (err) {
-      console.error("Lỗi gọi Gemini:", err);
+      console.error(err);
       return { handoff: true, text: null };
     }
   }
 
-  // ==================== CHUYỂN SANG ADMIN ====================
+  // Gửi Telegram qua Worker
+  async function sendTelegram(text) {
+    try {
+      await fetch(`${WORKER_URL}/api`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sendTelegram",
+          text: text
+        })
+      });
+    } catch (e) {
+      console.warn("Gửi Telegram lỗi:", e);
+    }
+  }
+
   async function transferToAdmin(reason = "Học sinh yêu cầu hoặc hết lượt AI") {
-    if (!aiMode) return; // đã chuyển rồi thì thôi
+    if (!aiMode) return;
 
     aiMode = false;
     setStatus("Đang liên hệ với Quản trị viên...", "blue");
@@ -2084,12 +2075,11 @@ QUY TẮC TRẢ LỜI:
       });
     }
 
-    // Gửi lịch sử lên Telegram
-    let historyText = conversationHistory.map(m => 
+    let historyText = conversationHistory.map(m =>
       (m.role === "user" ? "Học sinh" : "AI") + ": " + m.text
     ).join("\n");
 
-    const telegramText = 
+    const telegramText =
 `[CLB STEM AIOT] Yêu cầu hỗ trợ từ học sinh
 
 Session: ${sessionId}
@@ -2100,21 +2090,8 @@ ${historyText || "(Chưa có tin nhắn)"}
 
 (Trả lời tin nhắn này để tiếp tục hỗ trợ học sinh)`;
 
-    try {
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: ADMIN_CHAT_ID,
-          text: telegramText,
-          disable_web_page_preview: true
-        })
-      });
-    } catch (e) {
-      console.warn("Gửi Telegram lỗi:", e);
-    }
+    await sendTelegram(telegramText);
 
-    // Hiện tin hệ thống
     renderMessage({
       from: "admin",
       name: "Hệ thống",
@@ -2122,20 +2099,16 @@ ${historyText || "(Chưa có tin nhắn)"}
       ts: Date.now()
     });
 
-    // Bắt đầu lắng nghe tin Admin
     listenAdminMessages();
   }
 
-  // ==================== XỬ LÝ TIN NHẮN HỌC SINH ====================
   async function handleUserMessage(text) {
     if (!text.trim()) return;
 
     const lower = text.toLowerCase().trim();
 
-    // Hiện tin học sinh
     renderMessage({ from: "student", text, ts: Date.now() });
 
-    // Lưu Firebase
     if (sessionId) {
       db.ref(`livechats/${sessionId}/messages`).push({
         from: "student",
@@ -2144,18 +2117,11 @@ ${historyText || "(Chưa có tin nhắn)"}
       });
     }
 
-    // ===== NẾU ĐÃ CHUYỂN ADMIN RỒI =====
     if (!aiMode) {
-      const telegramText = `[CLB STEM AIOT] Tin nhắn mới\n\nSession: ${sessionId}\nNội dung: ${text}\n\n(Trả lời tin này để trả lời học sinh)`;
-      fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: ADMIN_CHAT_ID, text: telegramText })
-      });
+      await sendTelegram(`[CLB STEM AIOT] Tin nhắn mới\n\nSession: ${sessionId}\nNội dung: ${text}\n\n(Trả lời tin này để trả lời học sinh)`);
       return;
     }
 
-    // ===== KIỂM TRA CÂU LỆNH CHUYỂN ADMIN =====
     const transferKeywords = [
       "liên kết tới admin", "lien ket toi admin",
       "gặp admin", "gap admin",
@@ -2172,7 +2138,6 @@ ${historyText || "(Chưa có tin nhắn)"}
       return;
     }
 
-    // ===== CHẾ ĐỘ AI =====
     aiMessageCount++;
     showTyping();
 
@@ -2190,14 +2155,12 @@ ${historyText || "(Chưa có tin nhắn)"}
       return;
     }
 
-    // Hiện trả lời AI
     renderMessage({
       from: "ai",
       text: result.text,
       ts: Date.now()
     });
 
-    // Lưu Firebase
     if (sessionId) {
       db.ref(`livechats/${sessionId}/messages`).push({
         from: "ai",
@@ -2207,7 +2170,6 @@ ${historyText || "(Chưa có tin nhắn)"}
     }
   }
 
-  // ==================== LẮNG NGHE TIN ADMIN ====================
   function listenAdminMessages() {
     if (!sessionId) return;
     const ref = db.ref(`livechats/${sessionId}/messages`);
@@ -2236,7 +2198,6 @@ ${historyText || "(Chưa có tin nhắn)"}
     });
   }
 
-  // ==================== MỞ / ĐÓNG CHAT ====================
   function openChat() {
     if (!sessionId) createSession();
     panel.classList.remove("hidden");
@@ -2263,7 +2224,6 @@ ${historyText || "(Chưa có tin nhắn)"}
     isOpen = false;
   }
 
-  // ==================== SỰ KIỆN ====================
   toggleBtn.addEventListener("click", () => isOpen ? closeChat() : openChat());
   closeBtn.addEventListener("click", closeChat);
 
@@ -2277,6 +2237,5 @@ ${historyText || "(Chưa có tin nhắn)"}
 
 })();
 </script>
-
 </body>
 </html>
